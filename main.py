@@ -5,6 +5,9 @@ from datetime import date
 from typing import List, Optional, Union
 from fastapi import FastAPI, HTTPException, Response, Query
 from pydantic import BaseModel, Field, validator
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
+from fastapi import Request
 import asyncpg
 import orjson
 from fastapi.responses import ORJSONResponse
@@ -68,17 +71,26 @@ async def get_pessoa(p_id: str):
 
 @app.get("/pessoas")
 async def search_pessoas(t: str = Query(None)):
-    if not t:
-        raise HTTPException(status_code=400)
+    if not t or t.strip() == "":
+        # O regulamento exige 400 se o termo 't' não for informado
+        raise HTTPException(status_code=400, detail="Termo de busca obrigatório")
     
     async with pool.acquire() as conn:
-        # Busca usando o índice GIST que criamos no init.sql
+        # Buscamos na coluna indexada 'busca' que criamos no init.sql
+        # Limitamos a 50 resultados conforme o regulamento
         rows = await conn.fetch(
             "SELECT id, apelido, nome, nascimento, stack FROM pessoas WHERE busca ILIKE $1 LIMIT 50",
             f"%{t}%"
         )
+        
         return [
-            {**dict(r), "stack": r['stack'].split(',') if r['stack'] else None}
+            {
+                "id": str(r['id']),
+                "apelido": r['apelido'],
+                "nome": r['nome'],
+                "nascimento": r['nascimento'].isoformat(),
+                "stack": r['stack'].split(',') if r['stack'] else None
+            }
             for r in rows
         ]
 
@@ -87,3 +99,11 @@ async def count_pessoas():
     async with pool.acquire() as conn:
         count = await conn.fetchval("SELECT COUNT(1) FROM pessoas")
         return Response(content=str(count), media_type="text/plain")
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    # O regulamento da rinha pede 400 para erros sintáticos (tipos inválidos)
+    return JSONResponse(
+        status_code=400,
+        content={"detail": "Erro de sintaxe nos dados fornecidos"}
+    )

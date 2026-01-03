@@ -1,0 +1,3 @@
+payload
+{"apelido": "user1", "nome": "Usuario Um", "nascimento": "1990-01-01", "stack": ["Java"]}
+{"apelido": "user2", "nome": "Usuario Dois", "nascimento": "1991-01-01", "stack": ["Python"]}
